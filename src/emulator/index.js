@@ -1,5 +1,6 @@
 import {
   RetroAppWrapper,
+  ScriptAudioProcessor,
   CIDS,
   LOG
 } from '@webrcade/app-common';
@@ -14,6 +15,46 @@ export class Emulator extends RetroAppWrapper {
     window.emulator = this;
     this.rotated = this.getProps().rotated ? true : false;
     this.japanese = this.getProps().language === 1;
+
+    this.audioStarted = 0;
+
+    this.total = 0;
+    this.count = 0;
+    this.audioCallback = (offset, length) => {
+      this.total += length;
+      this.count = this.count + 1;
+
+      if (this.count === 60) {
+        //console.log("total: " + this.total);
+        this.total = 0;
+        this.count = 0;
+      }
+
+      length = length << 1;
+      const audioArray = new Int16Array(window.Module.HEAP16.buffer, offset, length);
+      this.audioProcessor.storeSoundCombinedInput(audioArray, 2, length, 0, 32768);
+    };
+  }
+
+  createAudioProcessor() {
+    return new ScriptAudioProcessor(
+      2,
+      48000,
+      8192 + 4096,
+      2048
+    ).setDebug(this.debug);
+  }
+
+  onFrame() {
+    if (this.audioStarted !== -1) {
+      if (this.audioStarted > 1) {
+        this.audioStarted = -1;
+        // Start the audio processor
+        this.audioProcessor.start();
+      } else {
+        this.audioStarted++;
+      }
+    }
   }
 
   getScriptUrl() {
