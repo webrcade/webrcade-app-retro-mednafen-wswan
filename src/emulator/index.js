@@ -39,7 +39,7 @@ export class Emulator extends RetroAppWrapper {
   createAudioProcessor() {
     return new ScriptAudioProcessor(
       2,
-      48000,
+      44100,
       8192 + 4096,
       2048
     ).setDebug(this.debug);
