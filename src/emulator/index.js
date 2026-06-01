@@ -57,6 +57,11 @@ export class Emulator extends RetroAppWrapper {
     }
   }
 
+  getHashFileExtension() {
+    const type = this.getProps().type;
+    return type === 'retro-mednafen-ws' ? 'ws' : 'wsc';
+  }
+
   getScriptUrl() {
     return 'js/mednafen_wswan_libretro.js';
   }
