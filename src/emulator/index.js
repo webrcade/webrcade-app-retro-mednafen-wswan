@@ -1,11 +1,10 @@
 import {
-  RetroAppWrapper,
+  BasicRetroAppWrapper,
   ScriptAudioProcessor,
-  CIDS,
   LOG
 } from '@webrcade/app-common';
 
-export class Emulator extends RetroAppWrapper {
+export class Emulator extends BasicRetroAppWrapper {
 
   GAME_SRAM_NAME = 'game.srm';
   SAVE_NAME = 'sav';
@@ -55,7 +54,17 @@ export class Emulator extends RetroAppWrapper {
         this.audioStarted++;
       }
     }
+
+    // Touch/mouse/keyboard interaction detection + on-screen touch overlay
+    // gating is inherited from BasicRetroAppWrapper.
+    super.onFrame();
   }
+
+  // Base class default pauses on any tap anywhere on screen -- redundant
+  // (and disruptive) now that there's a dedicated Pause button in the
+  // touch overlay. Same override every other TouchOverlay app uses for
+  // the same reason.
+  createTouchListener() {}
 
   getHashFileExtension() {
     const type = this.getProps().type;
@@ -73,13 +82,25 @@ export class Emulator extends RetroAppWrapper {
   sendInput(controller, input, analog0x, analog0y, analog1x, analog1y) {
     const { controllers } = this;
 
-    if (controllers.isControlDown(0, CIDS.SELECT)) {
-      this.selectDown = true;
-    } else {
-      if (this.selectDown) {
-        this.rotated = !this.rotated;
-        this.resizeScreen(this.canvas);
-        this.selectDown = false;
+    // WRC - sendInput() is called once per controller slot (CONTROLLER_COUNT=4)
+    // every polling cycle, with `input` reflecting whichever slot is
+    // currently being processed - only slot 0 ever has a real gamepad
+    // attached, so the toggle check must stay scoped to controller 0 (matching
+    // the original raw controllers.isControlDown(0, ...) read) or it sees a
+    // spurious release on every other slot's call and fires every frame.
+    // Reading the already-gated INP_SELECT bit (instead of the raw state)
+    // keeps the rotation toggle honoring the same hold-timer protection as
+    // the rest of Select's handling, instead of firing unconditionally
+    // regardless of how long RTRIG has been held.
+    if (controller === 0) {
+      if (input & this.INP_SELECT) {
+        this.selectDown = true;
+      } else {
+        if (this.selectDown) {
+          this.rotated = !this.rotated;
+          this.resizeScreen(this.canvas);
+          this.selectDown = false;
+        }
       }
     }
 
@@ -194,8 +215,27 @@ export class Emulator extends RetroAppWrapper {
     }
   }
 
+  // WRC - unlike neocd/picodrive (no real trigger function at all), this
+  // app maps both LTRIG and RTRIG to real, potentially-held buttons: the
+  // secondary Y-pad's "Y3"/"Y1" directions (see pause/controls.js's
+  // WonderSwanGamepadControls). Some WonderSwan games use the Y-pad as
+  // their primary input, so either trigger can genuinely be held for
+  // extended real gameplay - per the decision rule in
+  // docs/escape-hack-audit.md, all three getters below are true:
+  // Select is also a real function here (toggles screen rotation, see
+  // sendInput() below), and the right analog stick's tilt genuinely
+  // drives the secondary D-pad in rotated mode (also in sendInput()) -
+  // both conditions the rule requires alongside the real RTRIG use.
   isEscapeHackEnabled() {
-    return false;
+    return true;
+  }
+
+  isStartEscapeHackEnabled() {
+    return true;
+  }
+
+  isSelectEscapeHackEnabled() {
+    return true;
   }
 
   applyGameSettings() {
